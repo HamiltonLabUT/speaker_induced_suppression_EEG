@@ -29,6 +29,13 @@ This folder contains code for preprocessing raw EEG data. CCA correction was per
 This folder contains mostly Swift code for running the perception-production task on an iPad during data collection.
 * `sampling_MOCHA.ipynb` -- Python notebook that describes how the subset of MOCHA used in the task was sampled.
 
+## `eventfiles`
+This folder contains the event files used to epoch the data. The following aliases are used in the filenames to denote task condition:
+* `spkr`: perception
+* `mic`: production
+* `el` : predictable
+* `sh` : unpredictable
+
 ## Third-party software used
 * [philistine](https://pypi.org/project/philistine/)
 * [EEGLab](https://sccn.ucsd.edu/eeglab/index.php)
