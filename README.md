@@ -36,6 +36,9 @@ This folder contains the event files used to epoch the data. The following alias
 * `el` : predictable
 * `sh` : unpredictable
 
+## `textgrids`
+This folder contains the phone, word, and sentence-level Praat TextGrids for each subject.
+
 ## Third-party software used
 * [philistine](https://pypi.org/project/philistine/)
 * [EEGLab](https://sccn.ucsd.edu/eeglab/index.php)
