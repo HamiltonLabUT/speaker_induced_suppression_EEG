@@ -9,6 +9,8 @@ import tables
 
 from scipy import sparse
 
+zs = lambda x: (x-x[np.isnan(x)==False].mean(0))/x[np.isnan(x)==False].std(0)
+
 def zscore(mat, return_unzvals=False):
     """Z-scores the rows of [mat] by subtracting off the mean and dividing
     by the standard deviation.

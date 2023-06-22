@@ -15,8 +15,8 @@ import csv
 import logging
 import sys
 
-sys.path.append('/users/kfsh/git/onsetProd/gkTools/strf/')
-from gkTools.strf import ridge, utils
+sys.path.append('./path/to/git/speaker_induced_suppression_EEG/preprocessing/')
+from utils import ridge, utils
 
 def strf(resp, stim,
 	delay_min=0, delay_max=0.6, wt_pad=0.0, alphas=np.hstack((0, np.logspace(-3,5,20))),
@@ -40,45 +40,45 @@ def strf(resp, stim,
 	# Load stimulus and response
 	if resp.shape[1] != stim.shape[0]:
 		logging.warning("Resp and stim do not match! This is a problem")
-		# print("Resp shape: %r || Stim shape: %r" % (resp.shape[1],stim.shape[0]))
 	nchans, ntimes = resp.shape
 	print(nchans, ntimes)
 	# RUN THE STRFS
 	# For logging compute times, debug messages
 	logging.basicConfig(level=logging.DEBUG)
-	delays = np.arange(np.floor((delay_min-wt_pad)*sfreq), np.ceil((delay_max+wt_pad)*sfreq), dtype=np.int) 
-	# print("Delays:", delays)
-	# Regularization parameters (alphas - also sometimes called lambda)
-	# MIGHT HAVE TO CHANGE ALPHAS RANGE... e.g. alphas = np.hstack((0, np.logspace(-2,5,20)))
-	# alphas = np.hstack((0, np.logspace(2,8,20))) # Gives you 20 values between 10^2 and 10^8
-	# alphas = np.hstack((0, np.logspace(-1,7,20))) # Gives you 20 values between 10^-2 and 10^5
-	# alphas = np.logspace(1,8,20) # Gives you 20 values between 10^1 and 10^8
+	delays = np.arange(np.floor((delay_min-wt_pad)*sfreq), np.ceil((delay_max+wt_pad)*sfreq), dtype=int) 
 	nalphas = len(alphas)
 	all_wts = []
 	all_corrs = []
 	# Train on 80% of the trials, test on 
 	# the remaining 20%.
 	# Z-scoring function (assumes time is the 0th dimension)
-	zs = lambda x: (x-x[np.isnan(x)==False].mean(0))/x[np.isnan(x)==False].std(0)
 	resp = zs(resp.T).T
-	if len(vResp) >= 1 and len(vStim) >= 1:
+	if len(vResp) >= 1:
+		vResp = zs(vResp.T).T
+	if len(vResp) == 0 and len(vStim) == 0:
+		print("Creating vResp and vStim using an automated 80-20 split...")
 		# Create training and validation response matrices.
 		# Time must be the 0th dimension.
-		tResp = resp[:,:np.int(0.8*ntimes)].T
-		vResp = resp[:,np.int(0.8*ntimes):].T
+		tResp = resp[:,:int(0.8*ntimes)].T
+		vResp = resp[:,int(0.8*ntimes):].T
 		# Create training and validation stimulus matrices
-		tStim_temp = stim[:np.int(0.8*ntimes),:]
-		vStim_temp = stim[np.int(0.8*ntimes):,:]
-		tStim = utils.make_delayed(tStim_temp, delays)
-		vStim = utils.make_delayed(vStim_temp, delays)
+		tStim_temp = stim[:int(0.8*ntimes),:]
+		vStim_temp = stim[int(0.8*ntimes):,:]
 	else: # if vResp and vStim were passed into the function
-		tResp = resp
-		tStim = stim
-	chunklen = np.int(len(delays)*4) # We will randomize the data in chunks 
-	nchunks = np.floor(0.2*tStim.shape[0]/chunklen).astype('int')
+		print("Using training/validation split passed into the func...")
+		tResp = resp.T
+		vResp = vResp.T
+		tStim_temp = stim
+		vStim_temp = vStim
+	tStim = utils.make_delayed(tStim_temp, delays)
+	vStim = utils.make_delayed(vStim_temp, delays)
+	chunklen = int(len(delays)*4) # We will randomize the data in chunks 
+	nchunks = np.floor(0.2*tStim.shape[0]/chunklen).astype(int)
 	nchans = tResp.shape[1] # Number of electrodes/sensors
 
 	# get a strf
+	print(tStim.shape, vStim.shape)
+	print(tResp.shape, vResp.shape)
 	wt, corrs, valphas, allRcorrs, valinds, pred, Pstim = ridge.bootstrap_ridge(tStim, tResp, vStim, vResp, 
 																		  alphas, nboots, chunklen, nchunks, 
 																		  use_corr=use_corr,  single_alpha = single_alpha, 
@@ -113,6 +113,7 @@ def strf(resp, stim,
 		return(all_corrs,all_wts,tStim,tResp,vStim,vResp,valphas,pred)
 	else:
 		return(all_corrs, all_wts, tStim, tResp, vStim, vResp, valphas)	
+
 
 def get_feats(model_number='model1',mode='eeg',return_dict=False,extend_labels=False):
 	'''
@@ -193,3 +194,65 @@ def get_feats(model_number='model1',mode='eeg',return_dict=False,extend_labels=F
 		return y_labels
 	else:
 		return features_dict
+
+def load_model_inputs(model_input_h5_fpath,model_number):
+	'''
+	Loads model from hdf5 and indexes it accordingly for a given model number.
+	'''
+	all_features = get_feats('model2')
+	all_phnfeat = [all_features.index(f) for f in all_features[:-5] if "spkr_" not in f and "mic_" not in f]
+	spkr_phnfeat = [all_features.index(f) for f in all_features[:-5] if "spkr_" in f]
+	mic_phnfeat = [all_features.index(f) for f in all_features[:-5] if "mic_" in f]
+	spkr_mic_task_feats = [all_features.index(f) for f in all_features[-5:] if f in ['spkr','mic']]
+	el_sh_task_feats = [all_features.index(f) for f in all_features[-5:] if f in ['el','sh']]
+	emg_task_feat = [all_features.index('emg')]
+	# Load data
+	if os.path.isfile(model_input_h5_fpath):
+		with h5py.File(model_input_h5_fpath,'r') as f:
+			tStim = np.array(f.get('tStim'))
+			tResp = np.array(f.get('tResp'))
+			vStim = np.array(f.get('vStim'))
+			vResp = np.array(f.get('vResp'))
+	else:
+		raise Exception(f"File does not exist: {model_input_h5_fpath}")
+	# Index specific features according to model number
+	if 'model1' in model_number:
+		# 18(+1) features: 14 phnfeat + 4 task (+ emg)
+		feat_idxs = all_phnfeat + spkr_mic_task_feats + el_sh_task_feats
+	if 'model2' in model_number:
+		# 46(+1) features: 14*3 phnfeat + 4 task (+ emg)
+		feat_idxs = all_phnfeat + spkr_phnfeat + mic_phnfeat + spkr_mic_task_feats + el_sh_task_feats
+	if 'model3' in model_number:
+		# 16(+1) features: 14 phnfeat + 2 task (+ emg)
+		feat_idxs = all_phnfeat + spkr_mic_task_feats
+	if 'model4' in model_number:
+		# 16(+1) features: 14 phnfeat +2 task (+ emg)
+		feat_idxs = all_phnfeat + el_sh_task_feats
+	if model_number[-1] != 'e':
+		# Add the EMG (if the model includes it)
+		feat_idxs = feat_idxs + emg_task_feat
+	tStim = tStim[:,feat_idxs]
+	vStim = vStim[:,feat_idxs]
+	return tStim, tResp, vStim, vResp
+
+def predict_response(wt, vStim, vResp):
+	''' 
+	Predict the response to [vStim] given STRF weights [wt],
+	compare to the actual response [vResp], and return the correlation
+	between predicted and actual response.
+	Inputs:
+	    wt: [features x delays] x electrodes, your STRF weights
+	    vStim: time x [features x delays], your delayed stimulus matrix
+	    vResp: time x electrodes, your true response to vStim
+	Outputs:
+	    corr: correlation between predicted and actual response
+	    pred: prediction for each electrode [time x electrodes]
+	'''
+	nchans = wt.shape[1]
+	# print('Calculating prediction...')
+	pred = np.dot(vStim, wt)
+
+	# print('Calculating correlation')
+	corr = np.array([np.corrcoef(vResp[:,i], pred[:,i])[0,1] for i in np.arange(nchans)])
+
+	return corr, pred
